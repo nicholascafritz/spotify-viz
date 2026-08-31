@@ -2,7 +2,7 @@
 
 `spotify-viz` is a standalone, full-screen ASCII visualizer for ncspot. It uses batgrl's retained-mode terminal renderer for stable truecolor layers, observes the active PipeWire/PulseAudio output monitor through CAVA, and uses MPRIS only for ncspot metadata and play/pause.
 
-The scene is an impossible server cathedral: dense structural bays, catwalks, cable runs, atmosphere, and bounded scanline damage surround an off-centre violet void. Bass breathes the void and camera, midrange moves depth layers, treble adds cyan interference, and transients create brief signal tears. It uses only ASCII glyphs and fixed terminal cells.
+The scene keeps dense, full-height structural bulkheads at both sides of an open abstract particle field. Bass compresses and releases broad particle clouds, midrange curves and laterally shears the flow, treble adds bright sparks, and transients create brief outward signal bursts. It uses only ASCII glyphs and fixed terminal cells.
 
 Requirements
 
