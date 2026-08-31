@@ -4,7 +4,10 @@ from dataclasses import dataclass
 import subprocess
 import sys
 
-from spotify_viz.app import VisualizerApp, frame_delay, sanitize_status_text
+import pytest
+
+from spotify_viz.app import VisualizerApp, _build_live_batgrl_app, frame_delay, sanitize_status_text
+from spotify_viz.batgrl_app import BatgrlVisualizerApp
 from spotify_viz.cava import TapState
 from spotify_viz.config import VizConfig
 from spotify_viz.mpris import MprisState, NowPlaying
@@ -77,6 +80,37 @@ def test_module_help_exits_successfully() -> None:
 def test_frame_delay_caps_configured_fps() -> None:
     assert frame_delay(fps=20, started=10.0, now=10.02) == 0.03
     assert frame_delay(fps=20, started=10.0, now=10.2) == 0.0
+
+
+def test_advance_updates_audio_metadata_and_layout_without_terminal_rendering() -> None:
+    app, terminal, _, _ = make_app()
+
+    layout = app.advance(now=0.0)
+
+    assert layout is app.state.layout
+    assert app.state.tick == 0
+    assert terminal.frames == []
+
+
+def test_live_factory_uses_batgrl_without_replacing_cava_or_mpris_bridges(monkeypatch: pytest.MonkeyPatch) -> None:
+    cava = FakeCava()
+    mpris = FakeMpris()
+
+    class CavaFactory:
+        @staticmethod
+        def discover(source: str | None, *, fps: int) -> FakeCava:
+            assert source == "monitor"
+            assert fps == 20
+            return cava
+
+    monkeypatch.setattr("spotify_viz.app.CavaBridge", CavaFactory)
+    monkeypatch.setattr("spotify_viz.app.MprisBridge", lambda: mpris)
+
+    app = _build_live_batgrl_app(VizConfig(fps=20), source="monitor")
+
+    assert isinstance(app, BatgrlVisualizerApp)
+    assert app.controller.cava is cava
+    assert app.controller.mpris is mpris
 
 
 def test_no_mpris_keeps_scene_running_with_no_signal_status() -> None:

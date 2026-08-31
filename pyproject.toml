@@ -3,7 +3,9 @@ name = "spotify-viz"
 version = "0.1.0"
 description = "Audio-reactive liminal ASCII visualizer for ncspot"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "batgrl>=0.51,<0.52",
+]
 
 [project.scripts]
 spotify-viz = "spotify_viz.app:main"

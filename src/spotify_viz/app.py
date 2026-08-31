@@ -10,7 +10,7 @@ import sys
 import time
 import unicodedata
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from .cava import CavaBridge, TapState
 from .config import VizConfig, load_config
@@ -20,6 +20,9 @@ from .renderer import compose_ansi, semantic_ansi
 from .scene import ServerCathedralScene
 from .signal import SignalBands, SignalProcessor, SpectrumFrame
 from .terminal import TerminalSession
+
+if TYPE_CHECKING:
+    from .batgrl_app import BatgrlVisualizerApp
 
 
 RESET = "\x1b[0m"
@@ -98,7 +101,8 @@ class VisualizerApp:
         self.processor = SignalProcessor()
         self.state = AppState()
 
-    def step(self, *, now: float) -> bool:
+    def advance(self, *, now: float) -> Layout:
+        """Poll sources and update shared visualizer state without rendering."""
         columns, rows = self.size_provider()
         self.state.layout = select_layout(columns=columns, rows=rows, show_status=self.config.show_status)
         frame = self.cava.poll()
@@ -118,7 +122,10 @@ class VisualizerApp:
             poll_nonblocking = getattr(self.mpris, "poll_nonblocking", None)
             self.state.now_playing = poll_nonblocking() if callable(poll_nonblocking) else self.mpris.poll()
             self.state.next_metadata_poll = now + METADATA_INTERVAL
-        layout = self.state.layout
+        return self.state.layout
+
+    def step(self, *, now: float) -> bool:
+        layout = self.advance(now=now)
         scene = self.scenes[self.state.active_scene]
         canvas = scene.render(
             width=layout.canvas_width,
@@ -208,6 +215,17 @@ def _build_live_app(config: VizConfig, *, source: str | None) -> tuple[Visualize
     return app, terminal
 
 
+def _build_live_batgrl_app(config: VizConfig, *, source: str | None) -> BatgrlVisualizerApp:
+    """Keep CAVA/MPRIS ownership while replacing terminal rendering with batgrl."""
+    from .batgrl_app import BatgrlVisualizerApp
+
+    try:
+        cava = CavaBridge.discover(source or config.audio_source, fps=config.fps)
+    except (OSError, RuntimeError):
+        cava = CavaBridge(source=source or config.audio_source or "default", fps=config.fps)
+    return BatgrlVisualizerApp(config=config, cava=cava, mpris=MprisBridge())
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Audio-reactive liminal ASCII visualizer for ncspot.")
     parser.add_argument("--source", help="PipeWire/PulseAudio monitor source")
@@ -219,17 +237,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         config = replace(config, fps=args.fps)
         if not 1 <= config.fps <= 60:
             parser.error("--fps must be from 1 through 60")
-    app, terminal = _build_live_app(config, source=args.source)
+    app = _build_live_batgrl_app(config, source=args.source)
     try:
-        app.cava.start()  # type: ignore[attr-defined]
-        with terminal:
-            running = True
-            while running:
-                started = time.monotonic()
-                app.step(now=started)
-                key = _read_key(frame_delay(fps=config.fps, started=started, now=time.monotonic()))
-                if key is not None:
-                    running = app.handle_key(key)
+        app.controller.cava.start()  # type: ignore[attr-defined]
+        app.run()
     except KeyboardInterrupt:
         return 0
     finally:

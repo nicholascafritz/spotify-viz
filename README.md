@@ -1,13 +1,13 @@
 # spotify-viz
 
-`spotify-viz` is a standalone, full-screen ASCII/ANSI visualizer for ncspot. It observes the active PipeWire/PulseAudio output monitor through CAVA and uses MPRIS only for ncspot metadata and play/pause.
+`spotify-viz` is a standalone, full-screen ASCII visualizer for ncspot. It uses batgrl's retained-mode terminal renderer for stable truecolor layers, observes the active PipeWire/PulseAudio output monitor through CAVA, and uses MPRIS only for ncspot metadata and play/pause.
 
-The scene is an impossible server cathedral: phosphor-green arches, catwalks and cable runs surround an off-centre cyan door/void. Bass breathes the door and camera, midrange moves depth layers, treble adds bounded scanline damage, and transients create brief white signal tears. It uses only ASCII glyphs and fixed terminal cells.
+The scene is an impossible server cathedral: dense structural bays, catwalks, cable runs, atmosphere, and bounded scanline damage surround an off-centre violet void. Bass breathes the void and camera, midrange moves depth layers, treble adds cyan interference, and transients create brief signal tears. It uses only ASCII glyphs and fixed terminal cells.
 
 Requirements
 
 - Debian/Ubuntu runtime packages: `cava`, `playerctl`, PipeWire/PulseAudio compatibility
-- A truecolor terminal (Kitty is the intended terminal)
+- A truecolor terminal (Kitty is the intended terminal; batgrl owns the alternate screen and resize lifecycle)
 - ncspot signed into Spotify; Spotify Premium is required by ncspot, not by this project
 - Python 3.13 and `uv` for development
 
