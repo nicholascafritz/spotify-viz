@@ -1,0 +1,14 @@
+[general]
+bars = {bars}
+framerate = {framerate}
+
+[input]
+method = pulse
+source = {source}
+
+[output]
+method = raw
+raw_target = /dev/stdout
+data_format = binary
+bit_format = 16bit
+channels = mono

@@ -2,18 +2,20 @@ from __future__ import annotations
 
 import pytest
 
-from spotify_viz.config import ConfigError, VizConfig, load_config
+from spotify_viz.config import ConfigError, VizConfig, default_config_path, load_config
 
 
-def test_defaults_are_calm_and_complete() -> None:
+def test_defaults_are_calm_and_complete(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     assert load_config(None) == VizConfig()
+    assert default_config_path() == tmp_path / "spotify-viz" / "config.toml"
 
 
 def test_toml_overrides_defaults(tmp_path) -> None:
     path = tmp_path / "config.toml"
     path.write_text(
         'scene = "corridor"\nfps = 24\nmotion_intensity = 0.75\n'
-        'show_status = false\naudio_source = "my.monitor"\n',
+        'show_status = false\naudio_source = "my.monitor"\n[palette]\nstructure = "#11aa22"\nwarning = "#ffcc00"\n',
         encoding="utf-8",
     )
 
@@ -23,6 +25,7 @@ def test_toml_overrides_defaults(tmp_path) -> None:
         motion_intensity=0.75,
         show_status=False,
         audio_source="my.monitor",
+        palette=(("structure", "#11aa22"), ("warning", "#ffcc00")),
     )
 
 

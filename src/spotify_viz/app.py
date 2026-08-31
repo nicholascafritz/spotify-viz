@@ -1,93 +1,219 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, replace
 import os
-from pathlib import Path
 import select
 import shutil
-import struct
-import subprocess
 import sys
-import tempfile
-import termios
 import time
-import tty
+from pathlib import Path
+from typing import Protocol
 
-from .cava import default_sink, monitor_source, write_config
-from .mpris import current, toggle
-from .renderer import render_frame
-from .signal import SignalProcessor, SpectrumFrame
+from .cava import CavaBridge, TapState
+from .config import VizConfig, load_config
+from .layout import Layout, select_layout
+from .mpris import MprisBridge, MprisState, NowPlaying
+from .renderer import compose_ansi, semantic_ansi
+from .scene import ServerCathedralScene
+from .signal import SignalBands, SignalProcessor, SpectrumFrame
+from .terminal import TerminalSession
 
-GREEN = "\x1b[38;2;88;255;158m"
-CYAN = "\x1b[38;2;80;220;255m"
-DIM = "\x1b[38;2;75;105;92m"
+
 RESET = "\x1b[0m"
+METADATA_INTERVAL = 1.0
 
 
-def _read_frame(stream, carry: bytes, bars: int) -> tuple[SpectrumFrame | None, bytes]:
-    ready, _, _ = select.select([stream], [], [], 0)
-    if ready:
-        carry += os.read(stream.fileno(), 8192)
-    size = bars * 2
-    if len(carry) < size:
-        return None, carry
-    raw, carry = carry[:size], carry[size:]
-    return SpectrumFrame(struct.unpack(f"{bars}H", raw)), carry
+class AudioSource(Protocol):
+    state: TapState
+
+    def poll(self) -> SpectrumFrame | None: ...
+
+    def close(self) -> None: ...
+
+
+class MetadataSource(Protocol):
+    state: MprisState
+
+    def poll(self) -> NowPlaying | None: ...
+
+    def toggle_playback(self) -> bool: ...
+
+
+class TerminalWriter(Protocol):
+    def draw(self, content: str) -> None: ...
+
+
+@dataclass(slots=True)
+class AppState:
+    layout: Layout | None = None
+    bands: SignalBands = SignalBands(0.0, 0.0, 0.0, 0.0, False)
+    now_playing: NowPlaying | None = None
+    help_visible: bool = False
+    active_scene: int = 0
+    next_metadata_poll: float = float("-inf")
+    tick: int = 0
+
+
+def frame_delay(*, fps: int, started: float, now: float) -> float:
+    return round(max(0.0, 1 / fps - (now - started)), 8)
+
+
+def _format_elapsed(seconds: int) -> str:
+    return f"{max(0, seconds) // 60:02d}:{max(0, seconds) % 60:02d}"
+
+
+class VisualizerApp:
+    def __init__(
+        self,
+        *,
+        config: VizConfig,
+        cava: AudioSource,
+        mpris: MetadataSource,
+        terminal: TerminalWriter,
+        size_provider: Callable[[], tuple[int, int]],
+        scenes: Sequence[ServerCathedralScene] | None = None,
+    ) -> None:
+        self.config = config
+        self.cava = cava
+        self.mpris = mpris
+        self.terminal = terminal
+        self.size_provider = size_provider
+        self.scenes = list(scenes or [ServerCathedralScene(seed=42)])
+        self.processor = SignalProcessor()
+        self.state = AppState()
+
+    def step(self, *, now: float) -> bool:
+        columns, rows = self.size_provider()
+        self.state.layout = select_layout(columns=columns, rows=rows, show_status=self.config.show_status)
+        frame = self.cava.poll()
+        if self.cava.state is TapState.LOST:
+            self.state.bands = SignalBands(0.0, 0.0, 0.0, 0.0, False)
+        elif frame is not None:
+            self.state.bands = self._scaled_bands(self.processor.process(frame, now=now))
+        else:
+            self.state.bands = SignalBands(
+                self.state.bands.bass * 0.8,
+                self.state.bands.mid * 0.8,
+                self.state.bands.treble * 0.8,
+                self.state.bands.energy * 0.8,
+                False,
+            )
+        if now >= self.state.next_metadata_poll:
+            self.state.now_playing = self.mpris.poll()
+            self.state.next_metadata_poll = now + METADATA_INTERVAL
+        layout = self.state.layout
+        scene = self.scenes[self.state.active_scene]
+        canvas = scene.render(
+            width=layout.canvas_width,
+            height=layout.canvas_height,
+            bands=self.state.bands,
+            tick=self.state.tick,
+        )
+        output = compose_ansi(canvas, overrides=dict(self.config.palette))
+        if layout.status_visible:
+            output += "\n" + self._status_line(layout.canvas_width)
+        self.terminal.draw(output)
+        self.state.tick += 1
+        return True
+
+    def handle_key(self, key: bytes) -> bool:
+        if key in (b"q", b"Q", b"\x03"):
+            return False
+        if key == b" " and self.mpris.state is not MprisState.NO_SIGNAL:
+            self.mpris.toggle_playback()
+        elif key in (b"m", b"M"):
+            self.state.active_scene = (self.state.active_scene + 1) % len(self.scenes)
+        elif key in (b"h", b"H"):
+            self.state.help_visible = not self.state.help_visible
+        return True
+
+    def close(self) -> None:
+        self.cava.close()
+
+    def _scaled_bands(self, bands: SignalBands) -> SignalBands:
+        intensity = self.config.motion_intensity
+        return SignalBands(
+            bass=min(1.0, bands.bass * intensity),
+            mid=min(1.0, bands.mid * intensity),
+            treble=min(1.0, bands.treble * intensity),
+            energy=min(1.0, bands.energy * intensity),
+            transient=bands.transient,
+        )
+
+    def _status_line(self, width: int) -> str:
+        if self.state.help_visible:
+            line, color = "SPACE pause  M scene  H help  Q quit", semantic_ansi("reactive", dict(self.config.palette))
+        elif self.mpris.state is MprisState.NO_SIGNAL or self.state.now_playing is None:
+            line, color = "NO SIGNAL", semantic_ansi("warning", dict(self.config.palette))
+        else:
+            track = self.state.now_playing
+            stale = " STALE" if self.mpris.state is MprisState.STALE else ""
+            line = f"{track.artist} - {track.title}  {track.status}{stale}  {_format_elapsed(track.position)}"
+            color = semantic_ansi("reactive", dict(self.config.palette))
+        if self.cava.state is TapState.LOST:
+            line = f"{line}  |  AUDIO TAP LOST"
+            color = semantic_ansi("error", dict(self.config.palette))
+        elif self.cava.state is TapState.STALE:
+            line = f"{line}  |  AUDIO STALE"
+            color = semantic_ansi("warning", dict(self.config.palette))
+        return color + line[:width] + RESET
+
+
+def _terminal_size() -> tuple[int, int]:
+    size = shutil.get_terminal_size((100, 30))
+    return size.columns, size.lines
+
+
+def _read_key(timeout: float) -> bytes | None:
+    if not sys.stdin.isatty():
+        time.sleep(timeout)
+        return None
+    ready, _, _ = select.select([sys.stdin], [], [], timeout)
+    return os.read(sys.stdin.fileno(), 1) if ready else None
+
+
+def _build_live_app(config: VizConfig, *, source: str | None) -> tuple[VisualizerApp, TerminalSession]:
+    try:
+        cava = CavaBridge.discover(source or config.audio_source, fps=config.fps)
+    except (OSError, RuntimeError):
+        cava = CavaBridge(source=source or config.audio_source or "default", fps=config.fps)
+    terminal = TerminalSession()
+    app = VisualizerApp(
+        config=config,
+        cava=cava,
+        mpris=MprisBridge(),
+        terminal=terminal,
+        size_provider=_terminal_size,
+    )
+    return app, terminal
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Audio-reactive liminal ASCII visualizer for ncspot.")
     parser.add_argument("--source", help="PipeWire/PulseAudio monitor source")
-    parser.add_argument("--fps", type=int, default=30)
+    parser.add_argument("--fps", type=int, help="override the configured FPS cap")
+    parser.add_argument("--config", type=Path, help="explicit configuration TOML path")
     args = parser.parse_args(argv)
-    bars = 24
-    source = monitor_source(args.source, default_sink=default_sink)
-    with tempfile.TemporaryDirectory(prefix="spotify-viz-") as directory:
-        config = Path(directory) / "cava.conf"
-        write_config(config, source, bars=bars)
-        cava = subprocess.Popen(["cava", "-p", str(config)], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        assert cava.stdout is not None
-        old = termios.tcgetattr(sys.stdin.fileno())
-        tty.setcbreak(sys.stdin.fileno())
-        sys.stdout.write("\x1b[?1049h\x1b[?25l\x1b[2J")
-        sys.stdout.flush()
-        processor, carry, tick, help_visible = SignalProcessor(), b"", 0, False
-        latest = SpectrumFrame((0,) * bars)
-        try:
-            while True:
+    config = load_config(args.config)
+    if args.fps is not None:
+        config = replace(config, fps=args.fps)
+        if not 1 <= config.fps <= 60:
+            parser.error("--fps must be from 1 through 60")
+    app, terminal = _build_live_app(config, source=args.source)
+    try:
+        app.cava.start()  # type: ignore[attr-defined]
+        with terminal:
+            running = True
+            while running:
                 started = time.monotonic()
-                frame, carry = _read_frame(cava.stdout, carry, bars)
-                if frame:
-                    latest = frame
-                bands = processor.process(latest, now=started)
-                size = shutil.get_terminal_size((100, 32))
-                height = max(8, size.lines - 2)
-                art = render_frame(size.columns, height, bands, tick=tick)
-                track = current()
-                status = f"{track.artist} — {track.title}" if track else "NO SIGNAL"
-                footer = "SPACE: pause  M: scene  H: help  Q: quit"
-                if help_visible:
-                    footer = "BASS bends space · MIDS move debris · TREBLE fractures scanlines · Q returns"
-                sys.stdout.write(f"\x1b[H{GREEN}{art}{RESET}\n{CYAN}{status[:size.columns]}{RESET}\n{DIM}{footer[:size.columns]}{RESET}")
-                sys.stdout.flush()
-                tick += 1
-                ready, _, _ = select.select([sys.stdin], [], [], max(0, 1 / max(1, args.fps) - (time.monotonic() - started)))
-                if ready:
-                    key = os.read(sys.stdin.fileno(), 1)
-                    if key in (b"q", b"Q", b"\x03"):
-                        break
-                    if key == b" ":
-                        toggle()
-                    if key in (b"h", b"H"):
-                        help_visible = not help_visible
-        finally:
-            cava.terminate()
-            try:
-                cava.wait(timeout=1)
-            except subprocess.TimeoutExpired:
-                cava.kill()
-            termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, old)
-            sys.stdout.write("\x1b[?25h\x1b[?1049l")
-            sys.stdout.flush()
+                app.step(now=started)
+                key = _read_key(frame_delay(fps=config.fps, started=started, now=time.monotonic()))
+                if key is not None:
+                    running = app.handle_key(key)
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        app.close()
     return 0
