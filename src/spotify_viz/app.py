@@ -8,6 +8,7 @@ import select
 import shutil
 import sys
 import time
+import unicodedata
 from pathlib import Path
 from typing import Protocol
 
@@ -64,6 +65,19 @@ def _format_elapsed(seconds: int) -> str:
     return f"{max(0, seconds) // 60:02d}:{max(0, seconds) % 60:02d}"
 
 
+def sanitize_status_text(text: str, *, width: int) -> str:
+    clean = "".join(character for character in text if character.isprintable())
+    cells = 0
+    result: list[str] = []
+    for character in clean:
+        character_width = 0 if unicodedata.combining(character) else 2 if unicodedata.east_asian_width(character) in "FW" else 1
+        if cells + character_width > width:
+            break
+        result.append(character)
+        cells += character_width
+    return "".join(result)
+
+
 class VisualizerApp:
     def __init__(
         self,
@@ -101,7 +115,8 @@ class VisualizerApp:
                 False,
             )
         if now >= self.state.next_metadata_poll:
-            self.state.now_playing = self.mpris.poll()
+            poll_nonblocking = getattr(self.mpris, "poll_nonblocking", None)
+            self.state.now_playing = poll_nonblocking() if callable(poll_nonblocking) else self.mpris.poll()
             self.state.next_metadata_poll = now + METADATA_INTERVAL
         layout = self.state.layout
         scene = self.scenes[self.state.active_scene]
@@ -131,6 +146,9 @@ class VisualizerApp:
 
     def close(self) -> None:
         self.cava.close()
+        close_mpris = getattr(self.mpris, "close", None)
+        if callable(close_mpris):
+            close_mpris()
 
     def _scaled_bands(self, bands: SignalBands) -> SignalBands:
         intensity = self.config.motion_intensity
@@ -158,7 +176,7 @@ class VisualizerApp:
         elif self.cava.state is TapState.STALE:
             line = f"{line}  |  AUDIO STALE"
             color = semantic_ansi("warning", dict(self.config.palette))
-        return color + line[:width] + RESET
+        return color + sanitize_status_text(line, width=width) + RESET
 
 
 def _terminal_size() -> tuple[int, int]:

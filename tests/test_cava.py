@@ -37,3 +37,8 @@ def test_finished_cava_process_becomes_lost_not_an_exception() -> None:
     assert tap_state_for_process(None, received_frame=False) is TapState.STALE
     assert tap_state_for_process(1, received_frame=False) is TapState.LOST
     assert tap_state_for_process(0, received_frame=True) is TapState.CONNECTED
+
+
+def test_active_cava_is_not_stale_between_expected_frames() -> None:
+    assert tap_state_for_process(None, received_frame=False, last_frame_at=10.0, now=10.2) is TapState.CONNECTED
+    assert tap_state_for_process(None, received_frame=False, last_frame_at=10.0, now=11.1) is TapState.STALE

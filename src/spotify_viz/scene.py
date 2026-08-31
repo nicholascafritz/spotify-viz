@@ -63,7 +63,7 @@ class ServerCathedralScene:
         self.seed = seed
 
     def render(self, *, width: int, height: int, bands: SignalBands, tick: int) -> Canvas:
-        width, height = max(20, width), max(8, height)
+        width, height = max(1, width), max(1, height)
         canvas = _CanvasBuilder(width, height)
         phase = tick * 0.11 + self.seed * 0.019
         drift = int(round(math.sin(phase * 0.37) * 2 + math.sin(phase * 0.11) + bands.bass * math.sin(phase * 1.7) * 3))

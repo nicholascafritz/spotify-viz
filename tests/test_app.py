@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import subprocess
 import sys
 
-from spotify_viz.app import VisualizerApp, frame_delay
+from spotify_viz.app import VisualizerApp, frame_delay, sanitize_status_text
 from spotify_viz.cava import TapState
 from spotify_viz.config import VizConfig
 from spotify_viz.mpris import MprisState, NowPlaying
@@ -120,6 +120,10 @@ def test_compact_layout_hides_variable_status_readout() -> None:
     app.step(now=0.0)
 
     assert "Hardfloor" not in terminal.frames[-1]
+
+
+def test_status_text_removes_terminal_controls_and_clips_display_width() -> None:
+    assert sanitize_status_text("bad\x1b]52;clipboard\x07\ntrack", width=11) == "bad]52;clip"
 
 
 def test_cleanup_owns_only_cava_child() -> None:

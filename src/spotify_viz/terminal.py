@@ -31,9 +31,19 @@ class TerminalSession:
             self._stdin_fd = stdin_fd
             self._old_settings = termios.tcgetattr(stdin_fd)
             tty.setcbreak(stdin_fd)
-        self.writer.write(ENTER_ALTERNATE)
-        self.writer.flush()
+        try:
+            self.writer.write(ENTER_ALTERNATE)
+            self.writer.flush()
+        except BaseException:
+            self._restore_tty()
+            raise
         return self
+
+    def _restore_tty(self) -> None:
+        if self._stdin_fd is not None and self._old_settings is not None:
+            termios.tcsetattr(self._stdin_fd, termios.TCSADRAIN, self._old_settings)
+            self._stdin_fd = None
+            self._old_settings = None
 
     def draw(self, content: str) -> None:
         self.writer.write("\x1b[H\x1b[2J")
@@ -42,8 +52,7 @@ class TerminalSession:
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> bool:
         try:
-            if self._stdin_fd is not None and self._old_settings is not None:
-                termios.tcsetattr(self._stdin_fd, termios.TCSADRAIN, self._old_settings)
+            self._restore_tty()
         finally:
             self.writer.write(EXIT_ALTERNATE)
             self.writer.flush()

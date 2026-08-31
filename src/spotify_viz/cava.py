@@ -9,11 +9,13 @@ from pathlib import Path
 import selectors
 import subprocess
 import tempfile
+import time
 
 from .signal import SpectrumFrame
 
 
 RAW_SAMPLE_BYTES = 2
+STALE_AFTER_SECONDS = 1.0
 
 
 class TapState(str, Enum):
@@ -65,11 +67,19 @@ class RawFrameParser:
         return frames
 
 
-def tap_state_for_process(returncode: int | None, *, received_frame: bool) -> TapState:
+def tap_state_for_process(
+    returncode: int | None,
+    *,
+    received_frame: bool,
+    last_frame_at: float | None = None,
+    now: float | None = None,
+) -> TapState:
     if received_frame:
         return TapState.CONNECTED
     if returncode is not None:
         return TapState.LOST
+    if last_frame_at is not None and now is not None and now - last_frame_at < STALE_AFTER_SECONDS:
+        return TapState.CONNECTED
     return TapState.STALE
 
 
@@ -86,6 +96,7 @@ class CavaBridge:
         self._process: subprocess.Popen[bytes] | None = None
         self._selector: selectors.BaseSelector | None = None
         self._config_path: Path | None = None
+        self._last_frame_at: float | None = None
 
     @classmethod
     def discover(cls, explicit_source: str | None, *, bars: int = 24, fps: int = 30) -> CavaBridge:
@@ -100,7 +111,7 @@ class CavaBridge:
             ["cava", "-p", str(self._config_path)],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
         if self._process.stdout is None:
@@ -110,7 +121,8 @@ class CavaBridge:
         self._selector = selectors.DefaultSelector()
         self._selector.register(self._process.stdout, selectors.EVENT_READ)
 
-    def poll(self) -> SpectrumFrame | None:
+    def poll(self, *, now: float | None = None) -> SpectrumFrame | None:
+        observed_at = time.monotonic() if now is None else now
         if self._process is None or self._process.stdout is None:
             self.state = TapState.LOST
             return self.last_frame
@@ -125,8 +137,14 @@ class CavaBridge:
                     frames = self.parser.feed(chunk)
                     if frames:
                         self.last_frame = frames[-1]
+                        self._last_frame_at = observed_at
                         received = True
-        self.state = tap_state_for_process(self._process.poll(), received_frame=received)
+        self.state = tap_state_for_process(
+            self._process.poll(),
+            received_frame=received,
+            last_frame_at=self._last_frame_at,
+            now=observed_at,
+        )
         return self.last_frame
 
     def close(self) -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
 import subprocess
@@ -48,6 +49,8 @@ def _run(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
 class MprisBridge:
     def __init__(self, *, runner: Callable[[list[str]], CommandResult] = _run) -> None:
         self._runner = runner
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="spotify-viz-mpris")
+        self._future: Future[NowPlaying | None] | None = None
         self.state = MprisState.NO_SIGNAL
         self.last_now_playing: NowPlaying | None = None
 
@@ -68,16 +71,47 @@ class MprisBridge:
         self.state = MprisState.STALE if self.last_now_playing is not None else MprisState.NO_SIGNAL
         return self.last_now_playing
 
+    def poll_nonblocking(self) -> NowPlaying | None:
+        if self._future is None:
+            self._future = self._executor.submit(self.poll)
+            return self.last_now_playing
+        if not self._future.done():
+            return self.last_now_playing
+        try:
+            result = self._future.result()
+        finally:
+            self._future = None
+        return result
+
+    def wait_for_poll(self, *, timeout: float) -> NowPlaying | None:
+        if self._future is None:
+            return self.last_now_playing
+        try:
+            return self._future.result(timeout=timeout)
+        finally:
+            self._future = None
+
     def toggle_playback(self) -> bool:
         try:
             return self._runner(["playerctl", "--player=ncspot", "play-pause"]).returncode == 0
         except (OSError, subprocess.SubprocessError):
             return False
 
+    def close(self) -> None:
+        self._executor.shutdown(wait=False, cancel_futures=True)
+
 
 def current() -> NowPlaying | None:
-    return MprisBridge().poll()
+    bridge = MprisBridge()
+    try:
+        return bridge.poll()
+    finally:
+        bridge.close()
 
 
 def toggle() -> bool:
-    return MprisBridge().toggle_playback()
+    bridge = MprisBridge()
+    try:
+        return bridge.toggle_playback()
+    finally:
+        bridge.close()
