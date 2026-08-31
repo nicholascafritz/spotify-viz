@@ -104,7 +104,7 @@ class VisualizerApp:
         frame = self.cava.poll()
         if self.cava.state is TapState.LOST:
             self.state.bands = SignalBands(0.0, 0.0, 0.0, 0.0, False)
-        elif frame is not None:
+        elif self.cava.state is TapState.CONNECTED and frame is not None:
             self.state.bands = self._scaled_bands(self.processor.process(frame, now=now))
         else:
             self.state.bands = SignalBands(

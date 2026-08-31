@@ -95,6 +95,17 @@ def test_lost_audio_uses_quiet_scene_and_explicit_status() -> None:
     assert "AUDIO TAP LOST" in terminal.frames[-1]
 
 
+def test_stale_audio_settles_the_existing_scene_instead_of_reprocessing_last_frame() -> None:
+    app, _, _, _ = make_app(cava=FakeCava(state=TapState.STALE, frame=SpectrumFrame((65535,) * 24)))
+    app.state.bands = app.state.bands.__class__(0.5, 0.4, 0.3, 0.4, False)
+
+    app.step(now=0.0)
+
+    assert app.state.bands.bass == 0.4
+    assert round(app.state.bands.mid, 2) == 0.32
+    assert app.state.bands.treble == 0.24
+
+
 def test_controls_toggle_only_available_ncspot_and_cycle_scene_help_and_quit() -> None:
     app, _, _, mpris = make_app()
 
