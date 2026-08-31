@@ -42,6 +42,16 @@ def test_bass_moves_camera_and_changes_door_geometry() -> None:
     assert calm.door_bounds != heavy.door_bounds
 
 
+def test_cathedral_keeps_the_middle_under_the_door_clear_of_catwalks() -> None:
+    frame = ServerCathedralScene(seed=42).render(width=100, height=30, bands=bands(), tick=8)
+    middle_row = int(frame.height * 0.52)
+
+    assert not any(
+        cell.y == middle_row and cell.role is PaletteRole.STRUCTURE and cell.glyph == "="
+        for cell in frame.cells
+    )
+
+
 def test_midrange_increases_depth_separated_machine_and_debris_motion() -> None:
     scene = ServerCathedralScene(seed=42)
     quiet = scene.render(width=90, height=28, bands=bands(mid=0.0), tick=6)

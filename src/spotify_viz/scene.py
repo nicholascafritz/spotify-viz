@@ -100,7 +100,7 @@ class ServerCathedralScene:
 
     def _midground(self, canvas: _CanvasBuilder, door_x: int, door_y: int, bands: SignalBands, tick: int) -> None:
         shift = int(math.sin((tick + self.seed) * 0.19) * (1 + bands.mid * 5))
-        for level, ratio in enumerate((0.52, 0.66, 0.79)):
+        for level, ratio in enumerate((0.66, 0.79), start=1):
             y = min(canvas.height - 2, max(1, int(canvas.height * ratio) + (shift if level % 2 else -shift)))
             span = max(6, int(canvas.width * (0.17 + level * 0.10)))
             left, right = max(0, door_x - span), min(canvas.width - 1, door_x + span)
