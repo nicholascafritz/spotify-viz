@@ -14,10 +14,10 @@ from .signal import SignalBands
 ASCII_GLYPHS = frozenset(" /\\|_-=.:+*#")
 LAYER_ORDER = ("backdrop", "architecture", "void", "atmosphere", "reactive")
 LAYER_COLORS = {
-    "backdrop": Color(13, 29, 44),
-    "architecture": Color(72, 120, 148),
-    "void": Color(180, 67, 211),
-    "atmosphere": Color(94, 191, 187),
+    "backdrop": Color(9, 22, 34),
+    "architecture": Color(56, 126, 166),
+    "void": Color(201, 72, 225),
+    "atmosphere": Color(63, 187, 179),
     "reactive": Color(89, 230, 255),
 }
 
@@ -72,10 +72,7 @@ class BatgrlLayerStack(Gadget):
 
     def __init__(self, *, size: tuple[int, int]) -> None:
         super().__init__(size=size, is_transparent=True)
-        self.layers = {
-            name: Text(size=size, is_transparent=True)
-            for name in LAYER_ORDER
-        }
+        self.layers = {name: Text(size=size, is_transparent=True) for name in LAYER_ORDER}
         for layer in self.layers.values():
             self.add_gadget(layer)
 
@@ -100,7 +97,7 @@ class BatgrlLayerStack(Gadget):
 
 
 class DenseCathedralComposer:
-    """Deterministic pure-ASCII scene model for batgrl layer presentation."""
+    """A dense, load-bearing ASCII nave with an off-centre living void."""
 
     def __init__(self, *, seed: int = 0) -> None:
         self.seed = seed
@@ -113,19 +110,21 @@ class DenseCathedralComposer:
         atmosphere = _LayerBuilder(width, height)
         reactive = _LayerBuilder(width, height)
 
-        phase = tick * 0.07 + self.seed * 0.013
-        camera = int(round(math.sin(phase) * 2 + math.sin(phase * 0.37) * 2 + bands.bass * math.sin(phase * 1.9) * 4))
-        void_width = max(5, min(width // 4, int(width * (0.09 + bands.bass * 0.07))))
-        void_height = max(5, min(height // 2, int(height * (0.28 + bands.bass * 0.16))))
-        void_x = min(width - 3, max(void_width + 2, int(width * 0.58) + camera))
-        void_top = max(2, min(height - void_height - 2, int(height * 0.24) - int(bands.bass * 2)))
-        void_left = max(1, void_x - void_width // 2)
-        void_right = min(width - 2, void_x + void_width // 2)
-        void_bottom = min(height - 2, void_top + void_height)
-        void_bounds = (void_left, void_top, void_right, void_bottom)
+        phase = tick * 0.055 + self.seed * 0.019
+        drift = int(round(math.sin(phase) * 2 + bands.bass * math.sin(phase * 1.7) * 3))
+        void_width = max(7, min(width // 3, int(width * (0.15 + bands.bass * 0.06))))
+        void_height = max(7, min(height - 5, int(height * (0.43 + bands.bass * 0.10))))
+        void_x = min(width - void_width // 2 - 3, max(void_width // 2 + 3, int(width * 0.62) + drift))
+        void_top = max(2, min(height - void_height - 2, int(height * 0.17)))
+        void_bounds = (
+            max(1, void_x - void_width // 2),
+            void_top,
+            min(width - 2, void_x + void_width // 2),
+            min(height - 2, void_top + void_height),
+        )
 
-        self._backdrop(backdrop, tick, bands)
-        self._architecture(architecture, void_bounds, bands, tick, camera)
+        self._backdrop(backdrop, tick)
+        self._architecture(architecture, void_bounds, bands, tick)
         self._void(void, void_bounds, bands, tick)
         self._atmosphere(atmosphere, void_bounds, bands, tick)
         self._reactive(reactive, void_bounds, bands, tick)
@@ -143,76 +142,109 @@ class DenseCathedralComposer:
             void_bounds=void_bounds,
         )
 
-    def _backdrop(self, layer: _LayerBuilder, tick: int, bands: SignalBands) -> None:
+    def _backdrop(self, layer: _LayerBuilder, tick: int) -> None:
         for y in range(1, layer.height - 1):
-            if (y + tick) % 5 == 0:
-                for x in range((tick + y) % 4, layer.width, 7):
+            for x in range((y * 3 + tick) % 11, layer.width, 17):
+                if (x + y * 5 + self.seed) % 4 == 0:
                     layer.put(x, y, ".")
-        horizon = int(layer.height * 0.6)
-        for x in range(0, layer.width, 3):
-            if (x + tick) % 5:
-                layer.put(x, horizon, ":")
 
     def _architecture(
         self,
         layer: _LayerBuilder,
-        void_bounds: tuple[int, int, int, int],
+        bounds: tuple[int, int, int, int],
         bands: SignalBands,
         tick: int,
-        camera: int,
     ) -> None:
-        left_void, top_void, right_void, bottom_void = void_bounds
-        sway = int(math.sin((tick + self.seed) * 0.15) * (1 + bands.mid * 5))
-        for y in range(layer.height):
-            depth = y / max(1, layer.height - 1)
-            wall = max(1, int(layer.width * (0.03 + (1 - depth) * 0.17)))
-            left = wall + sway
-            right = layer.width - 1 - wall + sway
-            for offset, glyph in ((0, "|"), (2, ":"), (4, "|"), (6, "/")):
-                layer.put(left + offset, y, glyph if (y + offset) % 4 else "+")
-                layer.put(right - offset, y, "\\" if glyph == "/" else glyph)
-            if y % 4 == 0:
-                for x in range(max(0, left - 2), min(layer.width, left + 8)):
-                    layer.put(x, y, "=")
-                for x in range(max(0, right - 7), min(layer.width, right + 3)):
-                    layer.put(x, y, "=")
+        left_void, top_void, right_void, bottom_void = bounds
+        wall_width = max(6, min(layer.width // 4, int(layer.width * 0.21)))
+        sway = int(round(math.sin((tick + self.seed) * 0.12) * (1 + bands.mid * 2)))
 
-        for level, ratio in enumerate((0.45, 0.56, 0.68, 0.79, 0.88)):
-            y = min(layer.height - 2, max(1, int(layer.height * ratio) + ((level % 2) * 2 - 1) * sway))
-            span = int(layer.width * (0.2 + level * 0.045))
-            left, right = max(1, left_void - span), min(layer.width - 2, right_void + span)
+        material_phase = tick + int(bands.mid * 7)
+        self._bulkhead(layer, 0, wall_width, material_phase, sway, mirrored=False)
+        self._bulkhead(layer, layer.width - wall_width, layer.width - 1, material_phase, sway, mirrored=True)
+
+        floor_top = max(bottom_void + 1, int(layer.height * 0.56))
+        nave_left = wall_width - 2
+        nave_right = layer.width - wall_width + 1
+        for y in range(max(1, int(layer.height * 0.38)), layer.height):
+            depth = (y - int(layer.height * 0.38)) / max(1, layer.height * 0.62)
+            left = int(nave_left + (left_void - nave_left) * max(0.0, 1.0 - depth) * 0.62)
+            right = int(nave_right + (right_void - nave_right) * max(0.0, 1.0 - depth) * 0.62)
+            if y % 3 == 0:
+                for x in range(max(0, left), min(layer.width, right + 1)):
+                    if not self._inside(x, y, bounds) and (x + y + tick) % 5:
+                        layer.put(x, y, "=")
+            if y >= floor_top and y % 2:
+                for x in range(max(0, left), min(layer.width, right + 1), 3):
+                    if not self._inside(x, y, bounds):
+                        layer.put(x, y, "_")
+            layer.put(left, y, "/" if y < floor_top else "|")
+            layer.put(right, y, "\\" if y < floor_top else "|")
+
+        for level, ratio in enumerate((0.34, 0.49, 0.64, 0.80, 0.92)):
+            y = min(layer.height - 2, max(2, int(layer.height * ratio) + ((level % 2) * 2 - 1) * sway))
+            span = int(layer.width * (0.26 + level * 0.065))
+            left, right = max(wall_width - 1, left_void - span), min(layer.width - wall_width, right_void + span)
             for x in range(left, right + 1):
-                if (x + tick + level) % 4:
+                if not self._inside(x, y, bounds):
                     layer.put(x, y, "=")
-            for bay in range(left + 3, right - 2, 11):
-                if left_void <= bay <= right_void and top_void <= y <= bottom_void:
-                    continue
-                layer.put(bay, y - 1, "|")
-                layer.put(bay + 1, y - 2, "#")
-                layer.put(bay + 2, y - 1, "|")
+            for brace_x in range(left + 5 + (level % 3), right - 3, 12):
+                if not self._inside(brace_x, y - 1, bounds):
+                    layer.put(brace_x, y - 1, "|")
+                    layer.put(brace_x + 1, y - 2, "#")
+                    layer.put(brace_x + 2, y - 1, "|")
 
-        for y in range(2, layer.height - 2, 5):
-            for x in range(8, layer.width - 8, 9):
-                if left_void - 2 <= x <= right_void + 2 and top_void - 1 <= y <= bottom_void + 1:
-                    continue
-                glyph = "#" if (x + y + tick) % 3 else "+"
-                layer.put(x + sway, y, glyph)
-                layer.put(x + sway, y + 1, "|")
+        for cable in range(3):
+            x = int(layer.width * (0.29 + cable * 0.17)) + sway
+            end = max(3, int(layer.height * (0.38 + cable * 0.10)))
+            for y in range(1, end):
+                if not self._inside(x, y, bounds):
+                    layer.put(x + int(math.sin(y * 0.7 + tick * 0.08 + cable) * 2), y, "|" if y % 3 else ":")
+
+    def _bulkhead(self, layer: _LayerBuilder, start: int, end: int, tick: int, sway: int, *, mirrored: bool) -> None:
+        width = max(1, end - start + 1)
+        for y in range(layer.height):
+            for column in range(width):
+                x = end - column if mirrored else start + column
+                if column in (0, width - 1):
+                    glyph = "|"
+                elif y % 5 == 0:
+                    glyph = "="
+                elif column % 5 == 0:
+                    glyph = "|"
+                elif (column + y * 2 + tick + self.seed) % 7 in (0, 1):
+                    glyph = "#"
+                elif (column * 3 + y + tick) % 5:
+                    glyph = ":"
+                else:
+                    glyph = "."
+                layer.put(x + (sway if column == width - 2 else 0), y, glyph)
+            if y % 7 == 3:
+                socket = start + width // 2 if not mirrored else end - width // 2
+                layer.put(socket, y, "+")
+                layer.put(socket, y + 1, "|")
+
+    @staticmethod
+    def _inside(x: int, y: int, bounds: tuple[int, int, int, int]) -> bool:
+        left, top, right, bottom = bounds
+        return left <= x <= right and top <= y <= bottom
 
     @staticmethod
     def _void(layer: _LayerBuilder, bounds: tuple[int, int, int, int], bands: SignalBands, tick: int) -> None:
         left, top, right, bottom = bounds
         center = (left + right) // 2
+        height = max(1, bottom - top)
         for y in range(top, bottom + 1):
-            inset = int((y - top) * 0.18)
-            edge_left, edge_right = left + inset, right - inset
+            arch = int(max(0, (bottom - y) / height * 3))
+            edge_left, edge_right = left + arch, right - arch
             layer.put(edge_left, y, "/" if y < bottom else "_")
             layer.put(edge_right, y, "\\" if y < bottom else "_")
             for x in range(edge_left + 1, edge_right):
-                glyph = "#" if (x + y + tick) % 3 else ":"
-                layer.put(x, y, glyph)
-        layer.put(center, top - 1, "=")
-        if bands.bass > 0.65:
+                if (x + y + tick) % 5:
+                    layer.put(x, y, "#" if (x + y) % 2 else ":")
+        for offset in range(-2, 3):
+            layer.put(center + offset, top - 1, "=")
+        if bands.bass > 0.6:
             layer.put(center, bottom + 1, "=")
 
     def _atmosphere(
@@ -223,13 +255,11 @@ class DenseCathedralComposer:
         tick: int,
     ) -> None:
         left, top, right, bottom = bounds
-        count = 18 + int(bands.mid * 42)
-        for index in range(count):
-            x = (index * 29 + tick * (index % 5 + 1) + self.seed * 7) % layer.width
-            y = (index * 17 + tick * (index % 3 + 1) + self.seed) % layer.height
-            if left - 2 <= x <= right + 2 and top - 1 <= y <= bottom + 1:
-                continue
-            layer.put(x, y, (".", ":", "+", "*")[index % 4])
+        for index in range(12 + int(bands.mid * 24)):
+            x = (index * 37 + tick * (index % 3 + 1) + self.seed * 11) % layer.width
+            y = (index * 19 + tick * (index % 2 + 1) + self.seed) % layer.height
+            if not (left - 3 <= x <= right + 3 and top - 2 <= y <= bottom + 2):
+                layer.put(x, y, (".", ":", "+", "*")[index % 4])
 
     def _reactive(
         self,
@@ -239,17 +269,17 @@ class DenseCathedralComposer:
         tick: int,
     ) -> None:
         left, top, right, bottom = bounds
-        for index in range(int(bands.treble * 7)):
-            y = (tick * 3 + index * 5 + self.seed) % layer.height
-            x = (tick * 7 + index * 13) % max(1, layer.width - 9)
-            if top <= y <= bottom and left - 2 <= x <= right + 2:
-                x = max(0, right + 3)
-            for column in range(x, min(layer.width, x + 3 + int(bands.treble * 10))):
-                if (column + y) % 2:
+        for index in range(2 + int(bands.treble * 8)):
+            y = (tick * 2 + index * 4 + self.seed) % layer.height
+            x = (tick * 11 + index * 17) % max(1, layer.width - 14)
+            if top <= y <= bottom and left - 3 <= x <= right + 3:
+                x = right + 4
+            for column in range(x, min(layer.width, x + 5 + int(bands.treble * 11))):
+                if (column + y + index) % 2:
                     layer.put(column, y, "-")
         if bands.transient:
-            for index in range(5):
+            for index in range(6):
                 y = (top + tick + index * 3) % layer.height
-                x = max(0, min(layer.width - 6, left - 10 + index * 7))
-                for column in range(x, x + 6):
+                x = max(0, min(layer.width - 8, left - 13 + index * 8))
+                for column in range(x, x + 8):
                     layer.put(column, y, "=")

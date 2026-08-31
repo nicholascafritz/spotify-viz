@@ -23,7 +23,7 @@ def test_batgrl_composer_produces_dense_deterministic_ascii_layers() -> None:
     assert set(first.layers) == {"backdrop", "architecture", "void", "atmosphere", "reactive"}
     assert all(len(row) == 100 for layer in first.layers.values() for row in layer.rows)
     assert set("".join(first.composite_rows())) <= ASCII_GLYPHS
-    assert sum(character != " " for row in first.composite_rows() for character in row) >= 500
+    assert sum(character != " " for row in first.composite_rows() for character in row) >= 1_450
 
 
 def test_dense_cathedral_keeps_an_off_centre_void_and_open_focal_axis() -> None:
@@ -35,6 +35,32 @@ def test_dense_cathedral_keeps_an_off_centre_void_and_open_focal_axis() -> None:
     assert any("#" in row for row in frame.layers["void"].rows)
     focal_column = (left + right) // 2
     assert sum(row[focal_column] != " " for row in frame.layers["architecture"].rows[top:bottom]) <= 1
+
+
+def test_cathedral_has_continuous_load_bearing_flanks_and_a_readable_lower_nave() -> None:
+    frame = DenseCathedralComposer(seed=42).render(width=100, height=32, bands=bands(bass=0.5, mid=0.5), tick=12)
+    rows = frame.composite_rows()
+
+    flank_ink = sum(
+        character != " "
+        for row in rows[3:-3]
+        for character in (*row[:18], *row[-18:])
+    )
+    lower_nave_ink = sum(character != " " for row in rows[20:29] for character in row)
+
+    assert flank_ink >= 650
+    assert lower_nave_ink >= 620
+    assert all(sum(character != " " for character in row) >= 24 for row in rows[4:28])
+
+
+def test_portrait_terminal_keeps_the_composed_scene_instead_of_empty_symbol_scaffolding() -> None:
+    frame = DenseCathedralComposer(seed=42).render(width=80, height=42, bands=bands(bass=0.5, mid=0.5), tick=12)
+    rows = frame.composite_rows()
+
+    coverage = sum(character != " " for row in rows for character in row) / (frame.width * frame.height)
+
+    assert coverage >= 0.58
+    assert all(sum(character != " " for character in row) >= 30 for row in rows[4:38])
 
 
 def test_audio_bands_affect_separate_layers_without_changing_dimensions() -> None:
