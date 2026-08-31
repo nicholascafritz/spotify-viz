@@ -1,0 +1,17 @@
+[project]
+name = "spotify-viz"
+version = "0.1.0"
+description = "Audio-reactive liminal ASCII visualizer for ncspot"
+requires-python = ">=3.13"
+dependencies = []
+
+[project.scripts]
+spotify-viz = "spotify_viz.app:main"
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
