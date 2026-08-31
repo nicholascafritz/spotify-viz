@@ -42,12 +42,15 @@ def test_bass_moves_camera_and_changes_door_geometry() -> None:
     assert calm.door_bounds != heavy.door_bounds
 
 
-def test_cathedral_keeps_the_middle_under_the_door_clear_of_catwalks() -> None:
+def test_cathedral_keeps_the_central_hanging_cable_out_of_the_focal_axis() -> None:
     frame = ServerCathedralScene(seed=42).render(width=100, height=30, bands=bands(), tick=8)
-    middle_row = int(frame.height * 0.52)
-
-    assert not any(
-        cell.y == middle_row and cell.role is PaletteRole.STRUCTURE and cell.glyph == "="
+    assert all(
+        frame.cells[y * frame.width + x].glyph not in "|:"
+        for y in range(1, min(8, frame.height))
+        for x in range(45, min(55, frame.width))
+    )
+    assert any(
+        cell.y == int(frame.height * 0.52) and cell.role is PaletteRole.STRUCTURE and cell.glyph == "="
         for cell in frame.cells
     )
 
