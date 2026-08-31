@@ -30,11 +30,23 @@ def test_dense_cathedral_keeps_an_off_centre_void_and_open_focal_axis() -> None:
     frame = DenseCathedralComposer(seed=42).render(width=100, height=32, bands=bands(bass=0.6), tick=12)
     left, top, right, bottom = frame.void_bounds
 
-    assert left > 50
+    assert (left + right) // 2 > 55
     assert top < frame.height // 2 < bottom
     assert any("#" in row for row in frame.layers["void"].rows)
     focal_column = (left + right) // 2
     assert sum(row[focal_column] != " " for row in frame.layers["architecture"].rows[top:bottom]) <= 1
+
+
+def test_focal_void_is_a_wide_open_portal_not_a_solid_tapered_monolith() -> None:
+    frame = DenseCathedralComposer(seed=42).render(width=100, height=32, bands=bands(bass=0.6), tick=12)
+    left, top, right, bottom = frame.void_bounds
+    portal_width = right - left + 1
+    portal_height = bottom - top + 1
+    portal_ink = sum(character != " " for row in frame.layers["void"].rows[top : bottom + 1] for character in row[left : right + 1])
+
+    assert portal_width >= portal_height * 2
+    assert portal_ink <= portal_width * portal_height * 0.38
+    assert any(row[(left + right) // 2] == " " for row in frame.layers["void"].rows[top + 2 : bottom - 1])
 
 
 def test_cathedral_has_continuous_load_bearing_flanks_and_a_readable_lower_nave() -> None:

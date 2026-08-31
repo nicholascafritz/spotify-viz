@@ -112,10 +112,10 @@ class DenseCathedralComposer:
 
         phase = tick * 0.055 + self.seed * 0.019
         drift = int(round(math.sin(phase) * 2 + bands.bass * math.sin(phase * 1.7) * 3))
-        void_width = max(7, min(width // 3, int(width * (0.15 + bands.bass * 0.06))))
-        void_height = max(7, min(height - 5, int(height * (0.43 + bands.bass * 0.10))))
-        void_x = min(width - void_width // 2 - 3, max(void_width // 2 + 3, int(width * 0.62) + drift))
-        void_top = max(2, min(height - void_height - 2, int(height * 0.17)))
+        void_width = max(14, min(width // 2, int(width * (0.32 + bands.bass * 0.05))))
+        void_height = max(6, min(height // 3, int(height * (0.28 + bands.bass * 0.04)) + 1))
+        void_x = min(width - void_width // 2 - 3, max(void_width // 2 + 3, int(width * 0.59) + drift))
+        void_top = max(2, min(height - void_height - 2, int(height * 0.23)))
         void_bounds = (
             max(1, void_x - void_width // 2),
             void_top,
@@ -233,19 +233,24 @@ class DenseCathedralComposer:
     def _void(layer: _LayerBuilder, bounds: tuple[int, int, int, int], bands: SignalBands, tick: int) -> None:
         left, top, right, bottom = bounds
         center = (left + right) // 2
-        height = max(1, bottom - top)
-        for y in range(top, bottom + 1):
-            arch = int(max(0, (bottom - y) / height * 3))
-            edge_left, edge_right = left + arch, right - arch
-            layer.put(edge_left, y, "/" if y < bottom else "_")
-            layer.put(edge_right, y, "\\" if y < bottom else "_")
-            for x in range(edge_left + 1, edge_right):
-                if (x + y + tick) % 5:
-                    layer.put(x, y, "#" if (x + y) % 2 else ":")
-        for offset in range(-2, 3):
+        for x in range(left + 4, right - 3):
+            layer.put(x, top, "=")
+            layer.put(x, bottom, "_")
+        for y in range(top + 2, bottom):
+            layer.put(left, y, "|")
+            layer.put(right, y, "|")
+        layer.put(left + 1, top + 1, "/")
+        layer.put(right - 1, top + 1, "\\")
+        layer.put(left + 1, bottom - 1, "\\")
+        layer.put(right - 1, bottom - 1, "/")
+        for x in range(left + 3, right - 2, 5):
+            layer.put(x, top + 1, "#")
+            layer.put(x, bottom - 1, ":")
+        for offset in range(-3, 4):
             layer.put(center + offset, top - 1, "=")
         if bands.bass > 0.6:
-            layer.put(center, bottom + 1, "=")
+            layer.put(center - 2, bottom + 1, "=")
+            layer.put(center + 2, bottom + 1, "=")
 
     def _atmosphere(
         self,
