@@ -29,6 +29,8 @@ For an installed command:
 
 ```sh
 uv tool install --editable /home/user/spotify-viz
+# after pulling a dependency update:
+uv tool install --reinstall --editable /home/user/spotify-viz
 spotify-viz
 ```
 
